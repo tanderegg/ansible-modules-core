@@ -70,6 +70,15 @@ options:
         you need to configure mountpoints in a chroot environment.
     required: false
     default: /etc/fstab
+  remount:
+    description:
+      - If C(yes), '-o remount' will be added to the mount command when the
+        chosen mount point is already mounted.  If C(no), then the mount point
+        will be unmounted and remounted in two steps.  This is useful for
+        filesystems that do not support the 'remount' option.
+    choices: ["yes", "no"]
+    default: "yes"
+    required: false
 
 author:
     - Ansible Core Team
@@ -111,6 +120,9 @@ def set_mount(module, **kwargs):
         fstab  = '/etc/fstab'
     )
     args.update(kwargs)
+
+    if 'remount' in args:
+        del args['remount']
 
     # save the mount name before space replacement
     origname =  args['name']
@@ -219,23 +231,31 @@ def unset_mount(module, **kwargs):
 def mount(module, **kwargs):
     """ mount up a path or remount if needed """
 
-    # kwargs: name, src, fstype, opts, dump, passno, state, fstab=/etc/fstab
+    # kwargs: name, src, fstype, opts, dump, passno, state, fstab=/etc/fstab, remount=True
     args = dict(
         opts   = 'default',
         dump   = '0',
         passno = '0',
-        fstab  = '/etc/fstab'
+        fstab  = '/etc/fstab',
+        remount = True
     )
     args.update(kwargs)
 
     mount_bin = module.get_bin_path('mount')
 
     name = kwargs['name']
-    
+
     cmd = [ mount_bin, ]
-    
+
     if os.path.ismount(name):
-        cmd += [ '-o', 'remount', ]
+        if args['remount']:
+            cmd += [ '-o', 'remount', ]
+        else:
+            umount_bin = module.get_bin_path('umount')
+            umount_cmd = [ umount_bin, name ]
+            rc, out, err = module.run_command(umount_cmd)
+            if rc != 0:
+                return rc, out+err
 
     if get_platform().lower() == 'freebsd':
         cmd += [ '-F', args['fstab'], ]
@@ -272,7 +292,8 @@ def main():
             dump   = dict(default=None),
             src    = dict(required=True),
             fstype = dict(required=True),
-            fstab  = dict(default='/etc/fstab')
+            fstab  = dict(default='/etc/fstab'),
+            remount = dict(default=True, type="bool")
         ),
         supports_check_mode=True
     )
@@ -283,7 +304,8 @@ def main():
     args = {
         'name': module.params['name'],
         'src': module.params['src'],
-        'fstype': module.params['fstype']
+        'fstype': module.params['fstype'],
+        'remount': module.params['remount'],
     }
     if module.params['passno'] is not None:
         args['passno'] = module.params['passno']
@@ -295,7 +317,7 @@ def main():
         args['fstab'] = module.params['fstab']
 
     # if fstab file does not exist, we first need to create it. This mainly
-    # happens when fstab optin is passed to the module.
+    # happens when the fstab option is passed to the module.
     if not os.path.exists(args['fstab']):
         if not os.path.exists(os.path.dirname(args['fstab'])):
             os.makedirs(os.path.dirname(args['fstab']))
