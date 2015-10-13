@@ -77,7 +77,7 @@ options:
         will be unmounted and remounted in two steps.  This is useful for
         filesystems that do not support the 'remount' option.
     choices: ["yes", "no"]
-    default: "yes"
+    default: "no"
     required: false
 
 author:
@@ -237,7 +237,7 @@ def mount(module, **kwargs):
         dump   = '0',
         passno = '0',
         fstab  = '/etc/fstab',
-        remount = True
+        remount = False
     )
     args.update(kwargs)
 
@@ -293,7 +293,7 @@ def main():
             src    = dict(required=True),
             fstype = dict(required=True),
             fstab  = dict(default='/etc/fstab'),
-            remount = dict(default=True, type="bool")
+            remount = dict(default=False, type="bool")
         ),
         supports_check_mode=True
     )
